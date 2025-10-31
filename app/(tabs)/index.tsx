@@ -1,28 +1,9 @@
-import * as Location from "expo-location";
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { useLocation } from "../../hooks/useLocation";
 
 export default function HomeScreen() {
-  const [location, setLocation] = useState<Location.LocationObject | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      // 1. ask for permission
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setErrorMsg("Permission to access location was denied. You need to grant permission in order for geoPhoto to detect your location.");
-        setLoading(false);
-        return;
-      }
-
-      // 2. get current position
-      const currentLocation = await Location.getCurrentPositionAsync({});
-      setLocation(currentLocation);
-      setLoading(false);
-    })();
-  }, []);
+  const { location, loading, errorMsg } = useLocation();
 
   let content = null;
 
