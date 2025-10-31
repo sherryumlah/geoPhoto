@@ -48,6 +48,12 @@ A library that provides access to reading geolocation information, polling curre
 
 - [Library documentation](https://docs.expo.dev/versions/latest/sdk/location/)
 
+### Expo Camera
+
+A React component that renders a preview for the device's front or back camera.
+
+- [Library documentation](https://docs.expo.dev/versions/latest/sdk/camera/)
+
 ## Join the community
 
 Join our community of developers creating universal apps.
