@@ -12,7 +12,7 @@ export default function HomeScreen() {
       // 1. ask for permission
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        setErrorMsg("Permission to access location was denied");
+        setErrorMsg("Permission to access location was denied. You need to grant permission in order for geoPhoto to detect your location.");
         setLoading(false);
         return;
       }
@@ -37,7 +37,7 @@ export default function HomeScreen() {
     content = (
       <View style={styles.center}>
         <Text style={styles.error}>{errorMsg}</Text>
-        <Text>Enable location for geoPhoto in your phone settings.</Text>
+        <Text>Please enable location for geoPhoto in your phone settings to use this app.</Text>
       </View>
     );
   } else if (location) {
