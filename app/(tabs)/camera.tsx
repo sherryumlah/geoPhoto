@@ -1,7 +1,15 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
+import Constants from "expo-constants";
 import * as MediaLibrary from "expo-media-library";
 import React, { useRef, useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  Alert,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { GeoPhotoStrip } from "../../components/GeoPhotoStrip";
 import { useLocation } from "../../hooks/useLocation";
 
@@ -18,11 +26,15 @@ export default function CameraScreen() {
   const cameraRef = useRef<CameraView | null>(null);
 
   const { location, loading: locLoading, errorMsg: locError } = useLocation();
-
   const [photos, setPhotos] = useState<GeoPhoto[]>([]);
 
-  const [mediaPermissionResponse, requestMediaPermission] = 
+  // media library permission (may fail in Expo Go on Android 13+)
+  const [mediaPermissionResponse, requestMediaPermission] =
     MediaLibrary.usePermissions();
+
+  // detect Expo Go
+  const isRunningInExpoGo =
+    Constants.appOwnership === "expo" || Constants.executionEnvironment === "storeClient";
 
   if (!permission) {
     return (
@@ -35,9 +47,7 @@ export default function CameraScreen() {
   if (!permission.granted) {
     return (
       <View style={styles.center}>
-        <Text style={styles.text}>
-          We need your permission to use the camera.
-        </Text>
+        <Text style={styles.text}>We need your permission to use the camera.</Text>
         <TouchableOpacity style={styles.button} onPress={requestPermission}>
           <Text style={styles.buttonText}>Grant permission</Text>
         </TouchableOpacity>
@@ -45,7 +55,7 @@ export default function CameraScreen() {
     );
   }
 
-  async function ensureMediaPermission() {  
+  async function ensureMediaPermission() {
     if (!mediaPermissionResponse || !mediaPermissionResponse.granted) {
       const res = await requestMediaPermission();
       return res?.granted ?? false;
@@ -56,36 +66,40 @@ export default function CameraScreen() {
   async function takePhoto() {
     if (!cameraRef.current) return;
 
-    // 1. take the photo with the camera (Expo gives us a URI, e.g. file:///...)
+    // 1. take the photo
     const photo = await cameraRef.current.takePictureAsync();
 
-    // 2. try to save it to the device's media library
-    const canSave = await ensureMediaPermission();
-    if (!canSave) {
-      Alert.alert(
-        "Storage permission needed",
-        "We couldn't save the photo to your gallery. You can enable Photos/Media access in Settings."
-      );
-    } else {
-      try {
-        // create an asset (photo) in the library
-        const asset = await MediaLibrary.createAssetAsync(photo.uri);
-
-        // OPTIONAL: put it in a custom album called "geoPhoto"
-        const albumName = "geoPhoto";
-        let album = await MediaLibrary.getAlbumAsync(albumName);
-        if (!album) {
-          // create the album and add the asset
-          await MediaLibrary.createAlbumAsync(albumName, asset, false);
-        } else {
-          // add to existing album
-          await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+    // 2. try to save to gallery ONLY if we're not in Expo Go on Android
+    if (!(Platform.OS === "android" && isRunningInExpoGo)) {
+      const canSave = await ensureMediaPermission();
+      if (!canSave) {
+        Alert.alert(
+          "Storage permission needed",
+          "We couldn't save the photo to your gallery. Enable Photos/Media access in Settings."
+        );
+      } else {
+        try {
+          const asset = await MediaLibrary.createAssetAsync(photo.uri);
+          const albumName = "geoPhoto";
+          let album = await MediaLibrary.getAlbumAsync(albumName);
+          if (!album) {
+            await MediaLibrary.createAlbumAsync(albumName, asset, false);
+          } else {
+            await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+          }
+        } catch (err) {
+          console.warn("Could not save to media library", err);
         }
-      } catch (err) {
-        console.warn("Could not save to media library", err);
       }
+    } else {
+      // we're in Expo Go on Android → show friendly message once
+      Alert.alert(
+        "Gallery save not available in Expo Go",
+        "This is an Android 13+ limitation in Expo Go. Build a dev client (npx expo run:android) to test gallery saves."
+      );
     }
-    
+
+    // 3. always store in app state with GPS
     const lat = location ? location.coords.latitude : null;
     const lon = location ? location.coords.longitude : null;
 
@@ -107,7 +121,7 @@ export default function CameraScreen() {
     <View style={styles.container}>
       <CameraView ref={cameraRef} style={styles.camera} facing={facing} />
 
-      {/* status strip for location */}
+      {/* GPS status */}
       <View style={styles.statusBar}>
         {locLoading && <Text style={styles.statusText}>Getting GPS…</Text>}
         {locError && <Text style={styles.statusError}>No location: {locError}</Text>}
@@ -118,12 +132,12 @@ export default function CameraScreen() {
         )}
       </View>
 
-      {/* Recent GeoPhotos Strip */}
+      {/* strip */}
       <View style={styles.photoStripContainer}>
         <GeoPhotoStrip photos={photos} />
       </View>
 
-      {/* Camera controls */}
+      {/* controls */}
       <View style={styles.controls}>
         <TouchableOpacity style={styles.smallButton} onPress={toggleCameraFacing}>
           <Text style={styles.buttonText}>Flip</Text>
@@ -140,13 +154,8 @@ export default function CameraScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
-  camera: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: "#000" },
+  camera: { flex: 1 },
   center: {
     flex: 1,
     alignItems: "center",
@@ -154,20 +163,14 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 16,
   },
-  text: {
-    color: "#222",
-    textAlign: "center",
-  },
+  text: { color: "#222", textAlign: "center" },
   button: {
     backgroundColor: "#2563eb",
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 10,
   },
-  buttonText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
+  buttonText: { color: "#fff", fontWeight: "600" },
   statusBar: {
     position: "absolute",
     top: 40,
@@ -175,23 +178,14 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: 16,
   },
-  statusText: {
-    color: "#fff",
-    fontSize: 13,
-  },
-  statusError: {
-    color: "#fca5a5",
-    fontSize: 13,
-  },
-
-  /* NEW: wrap the photo strip and float it */
+  statusText: { color: "#fff", fontSize: 13 },
+  statusError: { color: "#fca5a5", fontSize: 13 },
   photoStripContainer: {
     position: "absolute",
-    bottom: 120, // above controls
+    bottom: 120,
     left: 0,
     right: 0,
   },
-
   controls: {
     position: "absolute",
     bottom: 40,
