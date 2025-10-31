@@ -23,10 +23,7 @@
         "READ_MEDIA_IMAGES",
         "READ_MEDIA_VIDEO",
         "WRITE_EXTERNAL_STORAGE",
-        "CAMERA",
-        "READ_MEDIA_IMAGES",
-        "READ_MEDIA_VIDEO",
-        "WRITE_EXTERNAL_STORAGE"
+        "AUDIO"
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
