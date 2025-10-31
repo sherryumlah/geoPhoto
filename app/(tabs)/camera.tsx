@@ -29,7 +29,6 @@ export default function CameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
 
-  // use whatever the hook currently has
   const {
     location,
     address,
@@ -42,11 +41,12 @@ export default function CameraScreen() {
   const [mediaPermissionResponse, requestMediaPermission] =
     MediaLibrary.usePermissions();
 
+  const [isCameraReady, setIsCameraReady] = useState(false);
+  const [isTakingPhoto, setIsTakingPhoto] = useState(false);
+
   const isRunningInExpoGo =
     Constants.appOwnership === "expo" ||
     Constants.executionEnvironment === "storeClient";
-
-  // ❌ removed useFocusEffect — no auto-refresh on focus
 
   if (!permission) {
     return (
@@ -87,54 +87,74 @@ export default function CameraScreen() {
   }
 
   async function takePhoto() {
-    if (!cameraRef.current) return;
-
-    const photo = await cameraRef.current.takePictureAsync();
-
-    // try to save to gallery (only outside Expo Go on Android)
-    if (!(Platform.OS === "android" && isRunningInExpoGo)) {
-      const canSave = await ensureMediaPermission();
-      if (!canSave) {
-        Alert.alert(
-          "Storage permission needed",
-          "We couldn't save the photo to your gallery. Enable Photos/Media access in Settings."
-        );
-      } else {
-        try {
-          const asset = await MediaLibrary.createAssetAsync(photo.uri);
-          const albumName = buildAlbumName();
-          let album = await MediaLibrary.getAlbumAsync(albumName);
-          if (!album) {
-            await MediaLibrary.createAlbumAsync(albumName, asset, false);
-          } else {
-            await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
-          }
-        } catch (err) {
-          console.warn("Could not save to media library", err);
-        }
-      }
-    } else {
-      Alert.alert(
-        "Gallery save not available in Expo Go",
-        "This is an Android 13+ limitation in Expo Go. Build a dev client to test gallery saves."
-      );
+    // Don’t take photo if not ready yet
+    if (!cameraRef.current || !isCameraReady) {
+      console.log("Camera not ready yet");
+      return;
     }
 
-    // save to local in-app list (whatever location we had at that moment)
-    const lat = location ? location.coords.latitude : null;
-    const lon = location ? location.coords.longitude : null;
+    // 2. avoid double-tap spam
+    if (isTakingPhoto) return;
+    setIsTakingPhoto(true);
 
-    const newGeoPhoto: GeoPhoto = {
-      uri: photo.uri,
-      latitude: lat,
-      longitude: lon,
-      takenAt: new Date().toISOString(),
-      city: address?.city,
-      region: address?.region,
-      country: address?.country,
-    };
+    try {
+      // Capture photo and preserve any existing EXIF data
+      const photo = await cameraRef.current.takePictureAsync({
+        exif: true,
+        quality: 1,
+        skipProcessing: false,
+      });
 
-    setPhotos((prev) => [newGeoPhoto, ...prev]);
+      // Save to gallery (if not in Expo Go-on-Android)
+      if (!(Platform.OS === "android" && isRunningInExpoGo)) {
+        const canSave = await ensureMediaPermission();
+        if (!canSave) {
+          Alert.alert(
+            "Storage permission needed",
+            "We couldn't save the photo to your gallery. Enable Photos/Media access in Settings."
+          );
+        } else {
+          try {
+            const asset = await MediaLibrary.createAssetAsync(photo.uri);
+            const albumName = buildAlbumName();
+            let album = await MediaLibrary.getAlbumAsync(albumName);
+            if (!album) {
+              await MediaLibrary.createAlbumAsync(albumName, asset, false);
+            } else {
+              await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+            }
+          } catch (err) {
+            console.warn("Could not save to media library", err);
+          }
+        }
+      } else {
+        Alert.alert(
+          "Gallery save not available in Expo Go",
+          "This is an Android 13+ limitation in Expo Go. Build a dev client to test gallery saves."
+        );
+      }
+
+      // 5. always store in local UI list
+      const lat = location ? location.coords.latitude : null;
+      const lon = location ? location.coords.longitude : null;
+
+      const newGeoPhoto: GeoPhoto = {
+        uri: photo.uri,
+        latitude: lat,
+        longitude: lon,
+        takenAt: new Date().toISOString(),
+        city: address?.city,
+        region: address?.region,
+        country: address?.country,
+      };
+
+      setPhotos((prev) => [newGeoPhoto, ...prev]);
+    } catch (err: any) {
+      console.warn("Failed to capture image:", err);
+      Alert.alert("Camera", "Failed to capture image. Try again.");
+    } finally {
+      setIsTakingPhoto(false);
+    }
   }
 
   function toggleCameraFacing() {
@@ -143,7 +163,15 @@ export default function CameraScreen() {
 
   return (
     <View style={styles.container}>
-      <CameraView ref={cameraRef} style={styles.camera} facing={facing} />
+      <CameraView
+        ref={cameraRef}
+        style={styles.camera}
+        facing={facing}
+        // 👇 this is IMPORTANT
+        onCameraReady={() => {
+          setIsCameraReady(true);
+        }}
+      />
 
       {/* GPS + address status */}
       <View style={styles.statusBar}>
@@ -177,9 +205,12 @@ export default function CameraScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.shutter, locLoading ? { opacity: 0.5 } : null]}
+          style={[
+            styles.shutter,
+            locLoading || !isCameraReady || isTakingPhoto ? { opacity: 0.4 } : null,
+          ]}
           onPress={takePhoto}
-          disabled={locLoading}
+          disabled={locLoading || !isCameraReady || isTakingPhoto}
         />
       </View>
     </View>
