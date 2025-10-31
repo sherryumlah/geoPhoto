@@ -1,4 +1,5 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
+import * as MediaLibrary from "expo-media-library";
 import React, { useRef, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { GeoPhotoStrip } from "../../components/GeoPhotoStrip";
@@ -19,6 +20,9 @@ export default function CameraScreen() {
   const { location, loading: locLoading, errorMsg: locError } = useLocation();
 
   const [photos, setPhotos] = useState<GeoPhoto[]>([]);
+
+  const [mediaPermissionResponse, requestMediaPermission] = 
+    MediaLibrary.usePermissions();
 
   if (!permission) {
     return (
@@ -41,10 +45,47 @@ export default function CameraScreen() {
     );
   }
 
+  async function ensureMediaPermission() {  
+    if (!mediaPermissionResponse || !mediaPermissionResponse.granted) {
+      const res = await requestMediaPermission();
+      return res?.granted ?? false;
+    }
+    return true;
+  }
+
   async function takePhoto() {
     if (!cameraRef.current) return;
+
+    // 1. take the photo with the camera (Expo gives us a URI, e.g. file:///...)
     const photo = await cameraRef.current.takePictureAsync();
 
+    // 2. try to save it to the device's media library
+    const canSave = await ensureMediaPermission();
+    if (!canSave) {
+      Alert.alert(
+        "Storage permission needed",
+        "We couldn't save the photo to your gallery. You can enable Photos/Media access in Settings."
+      );
+    } else {
+      try {
+        // create an asset (photo) in the library
+        const asset = await MediaLibrary.createAssetAsync(photo.uri);
+
+        // OPTIONAL: put it in a custom album called "geoPhoto"
+        const albumName = "geoPhoto";
+        let album = await MediaLibrary.getAlbumAsync(albumName);
+        if (!album) {
+          // create the album and add the asset
+          await MediaLibrary.createAlbumAsync(albumName, asset, false);
+        } else {
+          // add to existing album
+          await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+        }
+      } catch (err) {
+        console.warn("Could not save to media library", err);
+      }
+    }
+    
     const lat = location ? location.coords.latitude : null;
     const lon = location ? location.coords.longitude : null;
 
