@@ -1,37 +1,48 @@
 import * as Location from "expo-location";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-type UseLocationResult = {
-  location: Location.LocationObject | null;
-  loading: boolean;
-  errorMsg: string | null;
-};
-
-export function useLocation(): UseLocationResult {
+export function useLocation() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
+  const [address, setAddress] = useState<{
+    city?: string;
+    region?: string;
+    country?: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      // ask for permission
+  const fetchLocation = useCallback(async () => {
+    try {
+      setLoading(true);
+      setErrorMsg(null);
+
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        setErrorMsg("Permission to access location was denied. Please grant permission for the app to locate you.");
+        setErrorMsg("Permission to access location was denied");
         setLoading(false);
         return;
       }
 
-      // get current position
-      const currentLocation = await Location.getCurrentPositionAsync({});
-      setLocation(currentLocation);
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      setLocation(loc);
+
+      const geo = await Location.reverseGeocodeAsync(loc.coords);
+      if (geo.length > 0) {
+        const { city, region, country } = geo[0];
+        setAddress({ city, region, country });
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to get location");
+    } finally {
       setLoading(false);
-    })();
+    }
   }, []);
 
-  return {
-    location,
-    loading,
-    errorMsg,
-  };
+  useEffect(() => {
+    fetchLocation();
+  }, [fetchLocation]);
+
+  return { location, address, loading, errorMsg, refetchLocation: fetchLocation };
 }

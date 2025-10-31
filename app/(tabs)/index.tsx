@@ -1,76 +1,58 @@
-import React from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import React, { useCallback } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocation } from "../../hooks/useLocation";
 
 export default function HomeScreen() {
-  const { location, loading, errorMsg } = useLocation();
+  const { location, address, loading, errorMsg, refetchLocation } = useLocation();
 
-  let content = null;
+  useFocusEffect(
+    useCallback(() => {
+      refetchLocation();
+    }, [])
+  );
 
   if (loading) {
-    content = (
+    return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#2563eb" />
         <Text style={styles.text}>Getting your location…</Text>
       </View>
     );
-  } else if (errorMsg) {
-    content = (
+  }
+
+  if (errorMsg) {
+    return (
       <View style={styles.center}>
         <Text style={styles.error}>{errorMsg}</Text>
-        <Text style={styles.text}>
-          Enable location for geoPhoto in your phone settings.
-        </Text>
-      </View>
-    );
-  } else if (location) {
-    content = (
-      <View style={styles.center}>
-        <Text style={styles.title}>Your location</Text>
-        <Text style={styles.coord}>
-          Latitude: {location.coords.latitude.toFixed(5)}
-        </Text>
-        <Text style={styles.coord}>
-          Longitude: {location.coords.longitude.toFixed(5)}
-        </Text>
-        <Text style={styles.coord}>
-          Accuracy: {location.coords.accuracy.toFixed(2)} m
-        </Text>
       </View>
     );
   }
 
-  return <View style={styles.container}>{content}</View>;
+  return (
+    <View style={styles.center}>
+      {address && (
+        <>
+          <Text style={styles.title}>You are in:</Text>
+          <Text style={styles.location}>
+            {address.city}, {address.region}, {address.country}
+          </Text>
+        </>
+      )}
+      {location && (
+        <Text style={styles.coords}>
+          {location.coords.latitude.toFixed(5)}, {location.coords.longitude.toFixed(5)}
+        </Text>
+      )}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    padding: 16,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: "600",
-    marginBottom: 8,
-  },
-  coord: {
-    fontSize: 16,
-    color: "#333",
-  },
-  text: {
-    color: "#333",
-    textAlign: "center",
-  },
-  error: {
-    color: "red",
-    fontWeight: "500",
-    textAlign: "center",
-  },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", gap: 8 },
+  text: { color: "#333" },
+  title: { fontSize: 18, fontWeight: "600" },
+  location: { fontSize: 16, color: "#2563eb", fontWeight: "500" },
+  coords: { fontSize: 14, color: "#555" },
+  error: { color: "red" },
 });

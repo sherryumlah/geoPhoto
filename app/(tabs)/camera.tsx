@@ -18,6 +18,9 @@ type GeoPhoto = {
   latitude: number | null;
   longitude: number | null;
   takenAt: string;
+  city?: string;
+  region?: string;
+  country?: string;
 };
 
 export default function CameraScreen() {
@@ -25,14 +28,13 @@ export default function CameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
 
-  const { location, loading: locLoading, errorMsg: locError } = useLocation();
+  // ⬇️ now we also get address
+  const { location, address, loading: locLoading, errorMsg: locError } = useLocation();
   const [photos, setPhotos] = useState<GeoPhoto[]>([]);
 
-  // media library permission (may fail in Expo Go on Android 13+)
   const [mediaPermissionResponse, requestMediaPermission] =
     MediaLibrary.usePermissions();
 
-  // detect Expo Go
   const isRunningInExpoGo =
     Constants.appOwnership === "expo" || Constants.executionEnvironment === "storeClient";
 
@@ -63,13 +65,26 @@ export default function CameraScreen() {
     return true;
   }
 
+  // 🆕 helper to build album name
+  function buildAlbumName() {
+    const country = address?.country || "Unknown Country";
+    const region = address?.region || "Unknown Region";
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+
+    // geoPhoto - United States - Illinois - 2025-10
+    return `geoPhoto - ${country} - ${region} - ${year}-${month}`;
+  }
+
   async function takePhoto() {
     if (!cameraRef.current) return;
 
-    // Take the photo
+    // 1. capture photo
     const photo = await cameraRef.current.takePictureAsync();
 
-    // Save to gallery ONLY if we're not in Expo Go on Android
+    // 2. save to gallery (only outside Expo Go on Android)
     if (!(Platform.OS === "android" && isRunningInExpoGo)) {
       const canSave = await ensureMediaPermission();
       if (!canSave) {
@@ -80,7 +95,11 @@ export default function CameraScreen() {
       } else {
         try {
           const asset = await MediaLibrary.createAssetAsync(photo.uri);
-          const albumName = "geoPhoto";
+
+          // 🆕 album logic
+          const albumName = buildAlbumName();
+
+          // does an album with this name exist?
           let album = await MediaLibrary.getAlbumAsync(albumName);
           if (!album) {
             await MediaLibrary.createAlbumAsync(albumName, asset, false);
@@ -92,14 +111,13 @@ export default function CameraScreen() {
         }
       }
     } else {
-      // we're in Expo Go on Android → show friendly message once
       Alert.alert(
         "Gallery save not available in Expo Go",
-        "This is an Android 13+ limitation in Expo Go. Build a dev client (npx expo run:android) to test gallery saves."
+        "This is an Android 13+ limitation in Expo Go. Build a dev client to test gallery saves."
       );
     }
 
-    // 3. always store in app state with GPS
+    // 3. always store in local state (for our in-app strip)
     const lat = location ? location.coords.latitude : null;
     const lon = location ? location.coords.longitude : null;
 
@@ -108,6 +126,9 @@ export default function CameraScreen() {
       latitude: lat,
       longitude: lon,
       takenAt: new Date().toISOString(),
+      city: address?.city,
+      region: address?.region,
+      country: address?.country,
     };
 
     setPhotos((prev) => [newGeoPhoto, ...prev]);
@@ -121,18 +142,20 @@ export default function CameraScreen() {
     <View style={styles.container}>
       <CameraView ref={cameraRef} style={styles.camera} facing={facing} />
 
-      {/* GPS status */}
+      {/* GPS + address status */}
       <View style={styles.statusBar}>
         {locLoading && <Text style={styles.statusText}>Getting GPS…</Text>}
         {locError && <Text style={styles.statusError}>No location: {locError}</Text>}
-        {!locLoading && !locError && location && (
+        {!locLoading && !locError && (location || address) && (
           <Text style={styles.statusText}>
-            {location.coords.latitude.toFixed(5)}, {location.coords.longitude.toFixed(5)}
+            {address?.city ? `${address.city}, ` : ""}
+            {address?.region ? `${address.region}, ` : ""}
+            {address?.country ?? ""}
           </Text>
         )}
       </View>
 
-      {/* strip */}
+      {/* photo strip */}
       <View style={styles.photoStripContainer}>
         <GeoPhotoStrip photos={photos} />
       </View>
