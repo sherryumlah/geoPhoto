@@ -66,10 +66,10 @@ export default function CameraScreen() {
   async function takePhoto() {
     if (!cameraRef.current) return;
 
-    // 1. take the photo
+    // Take the photo
     const photo = await cameraRef.current.takePictureAsync();
 
-    // 2. try to save to gallery ONLY if we're not in Expo Go on Android
+    // Save to gallery ONLY if we're not in Expo Go on Android
     if (!(Platform.OS === "android" && isRunningInExpoGo)) {
       const canSave = await ensureMediaPermission();
       if (!canSave) {
