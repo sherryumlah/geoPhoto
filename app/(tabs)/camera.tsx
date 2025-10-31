@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import Constants from "expo-constants";
 import * as MediaLibrary from "expo-media-library";
@@ -28,15 +29,24 @@ export default function CameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
 
-  // ⬇️ now we also get address
-  const { location, address, loading: locLoading, errorMsg: locError } = useLocation();
-  const [photos, setPhotos] = useState<GeoPhoto[]>([]);
+  // use whatever the hook currently has
+  const {
+    location,
+    address,
+    loading: locLoading,
+    errorMsg: locError,
+    refetchLocation,
+  } = useLocation();
 
+  const [photos, setPhotos] = useState<GeoPhoto[]>([]);
   const [mediaPermissionResponse, requestMediaPermission] =
     MediaLibrary.usePermissions();
 
   const isRunningInExpoGo =
-    Constants.appOwnership === "expo" || Constants.executionEnvironment === "storeClient";
+    Constants.appOwnership === "expo" ||
+    Constants.executionEnvironment === "storeClient";
+
+  // ❌ removed useFocusEffect — no auto-refresh on focus
 
   if (!permission) {
     return (
@@ -65,7 +75,6 @@ export default function CameraScreen() {
     return true;
   }
 
-  // 🆕 helper to build album name
   function buildAlbumName() {
     const country = address?.country || "Unknown Country";
     const region = address?.region || "Unknown Region";
@@ -74,17 +83,15 @@ export default function CameraScreen() {
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, "0");
 
-    // geoPhoto - United States - Illinois - 2025-10
     return `geoPhoto - ${country} - ${region} - ${year}-${month}`;
   }
 
   async function takePhoto() {
     if (!cameraRef.current) return;
 
-    // 1. capture photo
     const photo = await cameraRef.current.takePictureAsync();
 
-    // 2. save to gallery (only outside Expo Go on Android)
+    // try to save to gallery (only outside Expo Go on Android)
     if (!(Platform.OS === "android" && isRunningInExpoGo)) {
       const canSave = await ensureMediaPermission();
       if (!canSave) {
@@ -95,11 +102,7 @@ export default function CameraScreen() {
       } else {
         try {
           const asset = await MediaLibrary.createAssetAsync(photo.uri);
-
-          // 🆕 album logic
           const albumName = buildAlbumName();
-
-          // does an album with this name exist?
           let album = await MediaLibrary.getAlbumAsync(albumName);
           if (!album) {
             await MediaLibrary.createAlbumAsync(albumName, asset, false);
@@ -117,7 +120,7 @@ export default function CameraScreen() {
       );
     }
 
-    // 3. always store in local state (for our in-app strip)
+    // save to local in-app list (whatever location we had at that moment)
     const lat = location ? location.coords.latitude : null;
     const lon = location ? location.coords.longitude : null;
 
@@ -144,15 +147,22 @@ export default function CameraScreen() {
 
       {/* GPS + address status */}
       <View style={styles.statusBar}>
-        {locLoading && <Text style={styles.statusText}>Getting GPS…</Text>}
-        {locError && <Text style={styles.statusError}>No location: {locError}</Text>}
-        {!locLoading && !locError && (location || address) && (
-          <Text style={styles.statusText}>
-            {address?.city ? `${address.city}, ` : ""}
-            {address?.region ? `${address.region}, ` : ""}
-            {address?.country ?? ""}
-          </Text>
-        )}
+        <View style={styles.statusTextWrap}>
+          {locLoading && <Text style={styles.statusText}>Getting GPS…</Text>}
+          {locError && <Text style={styles.statusError}>No location: {locError}</Text>}
+          {!locLoading && !locError && (location || address) && (
+            <Text style={styles.statusText}>
+              {address?.city ? `${address.city}, ` : ""}
+              {address?.region ? `${address.region}, ` : ""}
+              {address?.country ?? ""}
+            </Text>
+          )}
+        </View>
+
+        {/* map-pin refresh button */}
+        <TouchableOpacity style={styles.refreshBtn} onPress={refetchLocation}>
+          <Ionicons name="location" size={18} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       {/* photo strip */}
@@ -200,9 +210,23 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  statusTextWrap: {
+    flex: 1,
   },
   statusText: { color: "#fff", fontSize: 13 },
   statusError: { color: "#fca5a5", fontSize: 13 },
+  refreshBtn: {
+    backgroundColor: "rgba(0,0,0,0.45)",
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   photoStripContainer: {
     position: "absolute",
     bottom: 120,
