@@ -54,6 +54,9 @@ A React component that renders a preview for the device's front or back camera.
 
 - [Library documentation](https://docs.expo.dev/versions/latest/sdk/camera/)
 
+### Expo-Media-Library
+To put them in the device’s real photo gallery (Camera Roll) you need to hand the file off to the OS. The tool for that is expo-media-library.
+
 ## Join the community
 
 Join our community of developers creating universal apps.
