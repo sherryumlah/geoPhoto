@@ -1,8 +1,8 @@
 # geoPhoto
 
-A React Native / Expo app that captures photos with geolocation data and optionally saves them to the device’s gallery.  
+A React Native / Expo app that captures photos with geolocation data and saves them to the device’s gallery.  
 Built with the Expo SDK for rapid development, camera + location integration, and cross-platform deployment.
-
+Note: This has only been tested on Android to date
 ---
 
 ## Getting Started
@@ -18,9 +18,7 @@ npx expo start
 ```
 
 You can then choose to open the app in:
-- **Expo Go** on your Android or iOS device (scan the QR code)  
 - **Android emulator** via Android Studio  
-- **iOS simulator** on macOS  
 - or a **development build** (your own native binary)
 
 The app uses [file-based routing](https://docs.expo.dev/router/introduction/): every file in the `/app` directory corresponds to a screen.
