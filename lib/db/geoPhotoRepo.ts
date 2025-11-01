@@ -68,32 +68,77 @@ export async function deleteGeoPhotoAndFile(row: GeoPhotoRow) {
     return;
   }
 
-  // Delete DB row first
+  // 1) delete from DB
   await db.runAsync("DELETE FROM geo_photos WHERE id = ?", [row.id]);
 
-  // Try to delete the media asset AND the original file
-  await deletePhysicalFile(row.uri, row.media_asset_id ?? null);
+  // 2) delete from media + fs
+  await deletePhysicalFile(row);
 
-  // 3) tell the UI
+  // 3) tell UI
   emit("geoPhoto:deleted", { id: row.id });
 }
 
-async function deletePhysicalFile(uri: string, mediaAssetId: string | null) {
-  // Try to delete media-library asset (in Android Photos album "geoPhoto - ...")
-  if (mediaAssetId) {
-    try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status === "granted") {
-        await MediaLibrary.deleteAssetsAsync([mediaAssetId]);
-      } else {
-        console.warn("MediaLibrary permission not granted; cannot delete asset", mediaAssetId);
+async function deletePhysicalFile(row: GeoPhotoRow) {
+  const { uri, media_asset_id, country, region, taken_at } = row;
+
+  // ask for media permission (simple call - your SDK didn't like args)
+  const mediaPerm = await MediaLibrary.requestPermissionsAsync();
+  const canUseMedia = mediaPerm.granted;
+
+  // we’ll collect asset IDs we want to delete
+  const assetIdsToDelete: string[] = [];
+
+  // 1. if we have a stored media_asset_id, try that first
+  if (canUseMedia && media_asset_id) {
+    assetIdsToDelete.push(media_asset_id);
+  }
+
+  // 2. try to find the asset in the album we originally created
+  if (canUseMedia) {
+    const albumName = buildAlbumNameFromRow(country, region, taken_at);
+    if (albumName) {
+      const album = await MediaLibrary.getAlbumAsync(albumName);
+      if (album) {
+        // pull a reasonable number; your album per month won’t be huge
+        const assetsInAlbum = await MediaLibrary.getAssetsAsync({
+          album,
+          first: 200, // bump if you need
+          mediaType: ["photo"],
+        });
+
+        // try to match by uri filename
+        const wantedFilename = uri ? uri.split("/").pop() : null;
+
+        const matched = assetsInAlbum.assets.find((a) => {
+          // 1) exact uri match (sometimes matches)
+          if (a.uri === uri) return true;
+          // 2) filename match
+          if (wantedFilename && a.filename === wantedFilename) return true;
+          return false;
+        });
+
+        if (matched && !assetIdsToDelete.includes(matched.id)) {
+          assetIdsToDelete.push(matched.id);
+        }
       }
-    } catch (err) {
-      console.warn("MediaLibrary delete failed:", err);
     }
   }
 
-  // Separately, try to delete the original file:// the camera produced
+  // Delete the media assets we found
+  if (canUseMedia && assetIdsToDelete.length > 0) {
+    try {
+      const result = await MediaLibrary.deleteAssetsAsync(assetIdsToDelete);
+    } catch (err) {
+      console.warn("MediaLibrary delete failed:", err);
+    }
+  } else if (!canUseMedia) {
+    console.warn(
+      "MediaLibrary permission not granted; cannot delete from Photos. " +
+        "Go to Android Settings → Apps → your app → Photos & videos → Allow all."
+    );
+  }
+
+  // Always try to delete the original file:// too
   if (uri?.startsWith("file://")) {
     try {
       await FileSystem.deleteAsync(uri, { idempotent: true });
@@ -101,4 +146,27 @@ async function deletePhysicalFile(uri: string, mediaAssetId: string | null) {
       console.warn("FileSystem delete failed:", err);
     }
   }
+}
+
+// helper to rebuild the album name exactly the way you created it in the camera
+function buildAlbumNameFromRow(
+  country?: string | null,
+  region?: string | null,
+  taken_at?: string | null
+): string | null {
+  const c = country && country.trim().length ? country : "Unknown Country";
+  const r = region && region.trim().length ? region : "Unknown Region";
+
+  if (!taken_at) {
+    return `geoPhoto - ${c} - ${r}`; // fallback
+  }
+
+  const d = new Date(taken_at);
+  if (Number.isNaN(d.getTime())) {
+    return `geoPhoto - ${c} - ${r}`;
+  }
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  return `geoPhoto - ${c} - ${r} - ${year}-${month}`;
 }

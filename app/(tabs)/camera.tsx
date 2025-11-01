@@ -105,7 +105,6 @@ export default function CameraScreen() {
 
   async function takePhoto() {
     if (!cameraRef.current || !isCameraReady) {
-      console.log("Camera not ready yet");
       return;
     }
 
@@ -123,7 +122,11 @@ export default function CameraScreen() {
 
       // Save to Android/iOS Photos via Media Library
       let savedAsset: MediaLibrary.Asset | null = null;
-      const canSave = await ensureMediaPermission();
+
+      // Ask for FULL access (read + add + delete)
+      const mediaPerm = await MediaLibrary.requestPermissionsAsync();
+      const canSave = mediaPerm.granted;
+
       if (canSave) {
         try {
           const asset = await MediaLibrary.createAssetAsync(photo.uri);
