@@ -39,9 +39,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="gallery"
         options={{
-          title: "Explore",
+          title: "Gallery",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="planet" size={size} color={color} />
           ),

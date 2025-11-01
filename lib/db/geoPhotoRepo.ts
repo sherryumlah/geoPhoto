@@ -12,6 +12,16 @@ export type GeoPhotoRow = {
   note?: string | null;
 };
 
+export async function getRecentGeoPhotos(limit = 50): Promise<GeoPhotoRow[]> {
+  const rows = await db.getAllAsync<GeoPhotoRow>(
+    `SELECT * FROM geo_photos 
+     ORDER BY datetime(taken_at) DESC 
+     LIMIT ?;`,
+    [limit]
+  );
+  return rows;
+}
+
 export async function insertGeoPhoto(entry: GeoPhotoRow): Promise<number> {
   const result = await db.runAsync(
     `INSERT INTO geo_photos 

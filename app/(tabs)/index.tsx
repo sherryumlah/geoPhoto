@@ -20,7 +20,7 @@ export default function HomeScreen() {
         <View style={styles.center}>
           {address && (
             <>
-              <Text style={styles.title}>Last Known Location:</Text>
+              <Text style={styles.title}>Last Fetched Location:</Text>
               <Text style={styles.location}>
                 {address.city}, {address.region}, {address.country}
               </Text>

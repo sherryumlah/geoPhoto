@@ -13,7 +13,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { GeoPhotoStrip } from "../../components/GeoPhotoStrip";
 import { useLocation } from "../../hooks/useLocation";
 import {
   insertGeoPhoto,
@@ -44,17 +43,20 @@ export default function CameraScreen() {
     refetchLocation,
   } = useLocation();
 
-  const [photos, setPhotos] = useState<GeoPhoto[]>([]);
+  // removed: const [photos, setPhotos] = useState<GeoPhoto[]>([]);
+
   const [mediaPermissionResponse, requestMediaPermission] =
     MediaLibrary.usePermissions();
 
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [isTakingPhoto, setIsTakingPhoto] = useState(false);
 
-  // 🆕 note modal state
+  // note modal state
   const [noteModalVisible, setNoteModalVisible] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [lastInsertedId, setLastInsertedId] = useState<number | null>(null);
+  // we don't need to track the last captured photo for an on-screen strip anymore
+  // but we'll keep the uri in case you want to show a tiny preview in the modal later
   const [lastCapturedUri, setLastCapturedUri] = useState<string | null>(null);
 
   const isRunningInExpoGo =
@@ -180,8 +182,8 @@ export default function CameraScreen() {
         console.warn("Could not insert photo into SQLite", dbErr);
       }
 
-      // 5. update UI immediately
-      setPhotos((prev) => [newGeoPhoto, ...prev]);
+      // 5. we used to do: setPhotos((prev) => [newGeoPhoto, ...prev]);
+      // now we don't keep a local strip, so we skip that
 
       // 6. if we have a row id, open note modal
       if (insertedId) {
@@ -199,7 +201,6 @@ export default function CameraScreen() {
   }
 
   async function handleSaveNote() {
-    // user hit Save in modal
     if (!lastInsertedId) {
       setNoteModalVisible(false);
       return;
@@ -213,15 +214,8 @@ export default function CameraScreen() {
       console.warn("Could not update note in SQLite", err);
     }
 
-    // also update the in-memory list
-    if (lastCapturedUri) {
-      setPhotos((prev) =>
-        prev.map((p) =>
-          p.uri === lastCapturedUri ? { ...p, note: trimmed } : p
-        )
-      );
-    }
-
+    // we used to update the in-memory strip here.
+    // now Explore will read from SQLite, so we can just close.
     setNoteModalVisible(false);
   }
 
@@ -258,11 +252,6 @@ export default function CameraScreen() {
         <TouchableOpacity style={styles.refreshBtn} onPress={refetchLocation}>
           <Ionicons name="location" size={18} color="#fff" />
         </TouchableOpacity>
-      </View>
-
-      {/* photo strip */}
-      <View style={styles.photoStripContainer}>
-        <GeoPhotoStrip photos={photos} />
       </View>
 
       {/* controls */}
@@ -359,12 +348,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-  },
-  photoStripContainer: {
-    position: "absolute",
-    bottom: 120,
-    left: 0,
-    right: 0,
   },
   controls: {
     position: "absolute",
