@@ -114,23 +114,21 @@ export default function CameraScreen() {
     setIsTakingPhoto(true);
 
     try {
-      // Capture Photo
+      // Capture the photo
       const photo = await cameraRef.current.takePictureAsync({
         exif: true,
         quality: 1,
         skipProcessing: false,
       });
 
+      // Save to Android/iOS Photos via Media Library
       let savedAsset: MediaLibrary.Asset | null = null;
-
       const canSave = await ensureMediaPermission();
       if (canSave) {
         try {
-          // 1) create the asset from the camera file
           const asset = await MediaLibrary.createAssetAsync(photo.uri);
           savedAsset = asset;
 
-          // 2) put it in our nice folder
           const albumName = buildAlbumName();
           let album = await MediaLibrary.getAlbumAsync(albumName);
           if (!album) {
@@ -145,6 +143,20 @@ export default function CameraScreen() {
         console.warn("Media permission not granted, skipping gallery save");
       }
 
+      const lat = location ? location.coords.latitude : null;
+      const lon = location ? location.coords.longitude : null;
+
+      const newGeoPhoto: GeoPhoto = {
+        uri: photo.uri,
+        latitude: lat,
+        longitude: lon,
+        takenAt: new Date().toISOString(),
+        city: address?.city,
+        region: address?.region,
+        country: address?.country,
+        note: null, 
+      };
+
       // Persist to SQLite
       let insertedId: number | null = null;
       try {
@@ -156,14 +168,13 @@ export default function CameraScreen() {
           city: newGeoPhoto.city ?? null,
           region: newGeoPhoto.region ?? null,
           country: newGeoPhoto.country ?? null,
-          note: null,
-          media_asset_id: savedAsset ? savedAsset.id : null,  
+          note: newGeoPhoto.note ?? null,
+          media_asset_id: savedAsset ? savedAsset.id : null,
         });
       } catch (dbErr) {
         console.warn("Could not insert photo into SQLite", dbErr);
       }
 
-      // Emit after we have a DB row
       if (insertedId) {
         emit("geoPhoto:created", { id: insertedId });
         setLastInsertedId(insertedId);
