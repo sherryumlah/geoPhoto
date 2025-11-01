@@ -68,10 +68,10 @@ export async function deleteGeoPhotoAndFile(row: GeoPhotoRow) {
     return;
   }
 
-  // 1) delete DB row first
+  // Delete DB row first
   await db.runAsync("DELETE FROM geo_photos WHERE id = ?", [row.id]);
 
-  // 2) try to delete the media asset AND the original file
+  // Try to delete the media asset AND the original file
   await deletePhysicalFile(row.uri, row.media_asset_id ?? null);
 
   // 3) tell the UI
@@ -79,7 +79,7 @@ export async function deleteGeoPhotoAndFile(row: GeoPhotoRow) {
 }
 
 async function deletePhysicalFile(uri: string, mediaAssetId: string | null) {
-  // A) try to delete media-library asset (the one in "geoPhoto - ...")
+  // Try to delete media-library asset (in Android Photos album "geoPhoto - ...")
   if (mediaAssetId) {
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync();
@@ -93,7 +93,7 @@ async function deletePhysicalFile(uri: string, mediaAssetId: string | null) {
     }
   }
 
-  // B) separately, try to delete the original file:// the camera produced
+  // Separately, try to delete the original file:// the camera produced
   if (uri?.startsWith("file://")) {
     try {
       await FileSystem.deleteAsync(uri, { idempotent: true });

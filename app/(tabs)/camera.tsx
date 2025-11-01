@@ -156,7 +156,7 @@ export default function CameraScreen() {
           city: newGeoPhoto.city ?? null,
           region: newGeoPhoto.region ?? null,
           country: newGeoPhoto.country ?? null,
-          note: newGeoPhoto.note ?? null,
+          note: null,
           media_asset_id: savedAsset ? savedAsset.id : null,  
         });
       } catch (dbErr) {
