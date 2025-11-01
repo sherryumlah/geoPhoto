@@ -35,21 +35,32 @@ export default function GalleryScreen() {
   const handleDelete = (photo: GeoPhotoRow) => {
     Alert.alert(
       "Delete photo?",
-      "This will remove the photo from your gallery and delete the file.",
+      "This will remove it from your device's photos (if allowed).",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            await deleteGeoPhotoAndFile(photo);
-            setSelected(null); // close modal
-            // no need to call loadPhotos() here if deleteGeoPhotoAndFile emits "geoPhoto:deleted"
+            const res = await deleteGeoPhotoAndFile(photo);
+
+            if (!res?.ok) {
+              // don't close, tell user why
+              Alert.alert(
+                "Couldn't delete photo",
+                "Android didn't give permission to delete this photo from the media library. You can change this in Settings."
+              );
+              return;
+            }
+
+            // success → close modal
+            setSelected(null);
           },
         },
       ]
     );
   };
+
 
   // initial load
   useEffect(() => {
