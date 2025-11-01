@@ -37,7 +37,7 @@ export async function getRecentGeoPhotos(limit = 50): Promise<GeoPhotoRow[]> {
             await db.runAsync("DELETE FROM geo_photos WHERE id = ?", [row.id]);
             emit("geoPhoto:deleted", { id: row.id });
           }
-          continue; 
+          continue;
         }
       } catch (err) {
         console.warn("Could not stat file for geo photo", row.uri, err);
@@ -49,7 +49,6 @@ export async function getRecentGeoPhotos(limit = 50): Promise<GeoPhotoRow[]> {
 
   return cleaned;
 }
-
 
 export async function insertGeoPhoto(entry: GeoPhotoRow): Promise<number> {
   const result = await db.runAsync(
@@ -65,7 +64,7 @@ export async function insertGeoPhoto(entry: GeoPhotoRow): Promise<number> {
       entry.region ?? null,
       entry.country ?? null,
       entry.note ?? null,
-      entry.media_asset_id ?? null,   // 👈 store it
+      entry.media_asset_id ?? null, // 👈 store it
     ]
   );
 
@@ -90,20 +89,30 @@ export async function listGeoPhotos(): Promise<GeoPhotoRow[]> {
 export async function deleteGeoPhotoAndFile(row: GeoPhotoRow) {
   if (!row.id) {
     console.warn("deleteGeoPhotoAndFile called without id", row);
-    return;
+    return { ok: false, reason: "no-id" };
   }
 
-  // Delete from DB
+  // 1) try to delete media/file FIRST
+  const fileResult = await deletePhysicalFile(row);
+
+  // 👇 NEW: if we could NOT delete the actual media/file, DO NOT delete from DB
+  if (!fileResult.ok) {
+    // we keep the row, so the UI stays truthful
+    return fileResult;
+  }
+
+  // 2) now it's safe to delete from DB
   await db.runAsync("DELETE FROM geo_photos WHERE id = ?", [row.id]);
 
-  // Delete from media library + fs
-  await deletePhysicalFile(row);
-
-  // Emit event for refreshing gallery
+  // 3) Emit event for refreshing gallery
   emit("geoPhoto:deleted", { id: row.id });
+
+  return { ok: true };
 }
 
-async function deletePhysicalFile(row: GeoPhotoRow) {
+async function deletePhysicalFile(
+  row: GeoPhotoRow
+): Promise<{ ok: boolean; reason?: string }> {
   const { uri, media_asset_id, country, region, taken_at } = row;
 
   // Ask for media permission
@@ -150,17 +159,32 @@ async function deletePhysicalFile(row: GeoPhotoRow) {
   }
 
   // Delete the media assets we found
-  if (canUseMedia && assetIdsToDelete.length > 0) {
-    try {
-      const result = await MediaLibrary.deleteAssetsAsync(assetIdsToDelete);
-    } catch (err) {
-      console.warn("MediaLibrary delete failed:", err);
-    }
-  } else if (!canUseMedia) {
+  if (!canUseMedia && (media_asset_id || uri)) {
     console.warn(
       "MediaLibrary permission not granted; cannot delete from Photos. " +
         "Go to Android Settings → Apps → your app → Photos & videos → Allow all."
     );
+    return { ok: false, reason: "permission-denied" };
+  }
+
+  if (canUseMedia && assetIdsToDelete.length > 0) {
+    try {
+      await MediaLibrary.deleteAssetsAsync(assetIdsToDelete);
+    } catch (err: any) {
+      console.warn("MediaLibrary delete failed:", err);
+
+      // 👇 try to detect the specific "user didn't grant write permission" case
+      const message = typeof err?.message === "string" ? err.message : "";
+      if (
+        message.includes("didn't grant write permission") ||
+        message.includes("User didn't grant write permission")
+      ) {
+        return { ok: false, reason: "permission-denied" };
+      }
+
+      // generic media delete failure
+      return { ok: false, reason: "media-delete-failed" };
+    }
   }
 
   // Always try to delete the original file:// too
@@ -169,8 +193,11 @@ async function deletePhysicalFile(row: GeoPhotoRow) {
       await FileSystem.deleteAsync(uri, { idempotent: true });
     } catch (err) {
       console.warn("FileSystem delete failed:", err);
+      // we won't fail the whole thing for this
     }
   }
+
+  return { ok: true };
 }
 
 // helper to rebuild the album name exactly the way you created it in the camera
