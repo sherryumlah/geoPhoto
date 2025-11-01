@@ -1,15 +1,30 @@
-import { getRecentGeoPhotos, type GeoPhotoRow } from "@/lib/db/geoPhotoRepo";
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { on } from "../../lib/db/eventBus";
+import {
+  deleteGeoPhotoAndFile,
+  getRecentGeoPhotos,
+  type GeoPhotoRow,
+} from "../../lib/db/geoPhotoRepo";
 
-export default function ExploreScreen() {
+export default function GalleryScreen() {
   const [photos, setPhotos] = useState<GeoPhotoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<GeoPhotoRow | null>(null);
 
   const loadPhotos = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
       const rows = await getRecentGeoPhotos(60);
       setPhotos(rows);
     } finally {
@@ -17,8 +32,44 @@ export default function ExploreScreen() {
     }
   }, []);
 
+  const handleDelete = (photo: GeoPhotoRow) => {
+    Alert.alert(
+      "Delete photo?",
+      "This will remove the photo from your gallery and delete the file.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            await deleteGeoPhotoAndFile(photo);
+            setSelected(null); // close modal
+            // no need to call loadPhotos() here if deleteGeoPhotoAndFile emits "geoPhoto:deleted"
+          },
+        },
+      ]
+    );
+  };
+
+  // initial load
   useEffect(() => {
     loadPhotos();
+  }, [loadPhotos]);
+
+  // refresh when created OR deleted
+  useEffect(() => {
+    const offCreated = on("geoPhoto:created", () => {
+      loadPhotos();
+    });
+
+    const offDeleted = on("geoPhoto:deleted", () => {
+      loadPhotos();
+    });
+
+    return () => {
+      offCreated();
+      offDeleted();
+    };
   }, [loadPhotos]);
 
   const renderItem = ({ item }: { item: GeoPhotoRow }) => (
@@ -44,7 +95,11 @@ export default function ExploreScreen() {
         />
       )}
 
-      <PhotoDetailsModal photo={selected} onClose={() => setSelected(null)} />
+      <PhotoDetailsModal
+        photo={selected}
+        onClose={() => setSelected(null)}
+        onDelete={handleDelete}
+      />
     </View>
   );
 }
@@ -66,9 +121,11 @@ function PhotoTile({
 function PhotoDetailsModal({
   photo,
   onClose,
+  onDelete,
 }: {
   photo: GeoPhotoRow | null;
   onClose: () => void;
+  onDelete: (photo: GeoPhotoRow) => void;
 }) {
   return (
     <Modal visible={!!photo} animationType="slide" transparent>
@@ -96,18 +153,29 @@ function PhotoDetailsModal({
             </>
           ) : null}
 
-          {(photo?.city || photo?.country) ? (
+          {photo && (photo.city || photo.country) ? (
             <>
               <Text style={styles.label}>Location</Text>
               <Text style={styles.value}>
-                {[photo.city, photo.region, photo.country].filter(Boolean).join(", ")}
+                {[photo.city, photo.region, photo.country]
+                  .filter(Boolean)
+                  .join(", ")}
               </Text>
             </>
           ) : null}
 
-          <Pressable onPress={onClose} style={styles.closeBtn}>
-            <Text style={styles.closeText}>Close</Text>
-          </Pressable>
+          {/* 2) render actions together */}
+          <View style={styles.modalActions}>
+            <Pressable onPress={onClose} style={styles.closeBtn}>
+              <Text style={styles.closeText}>Close</Text>
+            </Pressable>
+
+            {photo ? (
+              <Pressable onPress={() => onDelete(photo)} style={styles.deleteBtn}>
+                <Text style={styles.deleteText}>Delete</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
       </View>
     </Modal>
@@ -188,15 +256,29 @@ const styles = StyleSheet.create({
     color: "#111",
     marginTop: 2,
   },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 18,
+  },
   closeBtn: {
-    marginTop: 16,
-    alignSelf: "flex-end",
     backgroundColor: "#111",
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 8,
   },
   closeText: {
+    color: "#fff",
+    fontWeight: "500",
+  },
+  deleteBtn: {
+    backgroundColor: "#c62828",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  deleteText: {
     color: "#fff",
     fontWeight: "500",
   },

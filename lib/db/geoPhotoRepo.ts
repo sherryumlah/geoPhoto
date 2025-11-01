@@ -1,4 +1,6 @@
+import { File } from "expo-file-system";
 import { db } from "./db";
+import { emit } from "./eventBus";
 
 export type GeoPhotoRow = {
   id?: number;
@@ -52,4 +54,22 @@ export async function listGeoPhotos(): Promise<GeoPhotoRow[]> {
     `SELECT * FROM geo_photos ORDER BY datetime(taken_at) DESC;`
   );
   return rows;
+}
+
+export async function deleteGeoPhotoAndFile(row: GeoPhotoRow) {
+  // Remove the DB record
+  await db.runAsync("DELETE FROM geo_photos WHERE id = ?", [row.id]);
+
+  // Delete the local file, if applicable
+  if (row.uri && row.uri.startsWith("file://")) {
+    try {
+      const file = File.fromURI(row.uri);
+      await file.deleteAsync({ idempotent: true });
+    } catch (e) {
+      console.warn("Failed to delete file", e);
+    }
+  }
+
+  // Emit an event so the gallery reloads
+  emit("geoPhoto:deleted", { id: row.id });
 }

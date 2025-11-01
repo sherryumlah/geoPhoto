@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useLocation } from "../../hooks/useLocation";
+import { emit } from "../../lib/db/eventBus";
 import {
   insertGeoPhoto,
   updateGeoPhotoNote,
@@ -114,14 +115,14 @@ export default function CameraScreen() {
     setIsTakingPhoto(true);
 
     try {
-      // 1. Capture
+      // Capture Photo
       const photo = await cameraRef.current.takePictureAsync({
         exif: true,
         quality: 1,
         skipProcessing: false,
       });
 
-      // 2. Save to gallery (outside Expo Go on Android)
+      // Save to gallery (outside Expo Go on Android)
       if (!(Platform.OS === "android" && isRunningInExpoGo)) {
         const canSave = await ensureMediaPermission();
         if (!canSave) {
@@ -150,7 +151,7 @@ export default function CameraScreen() {
         );
       }
 
-      // 3. build in-app record
+      // Build in-app record
       const lat = location ? location.coords.latitude : null;
       const lon = location ? location.coords.longitude : null;
 
@@ -165,7 +166,7 @@ export default function CameraScreen() {
         note: null,
       };
 
-      // 4. persist to SQLite
+      // Persist to SQLite
       let insertedId: number | null = null;
       try {
         insertedId = await insertGeoPhoto({
@@ -182,11 +183,9 @@ export default function CameraScreen() {
         console.warn("Could not insert photo into SQLite", dbErr);
       }
 
-      // 5. we used to do: setPhotos((prev) => [newGeoPhoto, ...prev]);
-      // now we don't keep a local strip, so we skip that
-
-      // 6. if we have a row id, open note modal
+      // Emit after we have a DB row
       if (insertedId) {
+        emit("geoPhoto:created", { id: insertedId });
         setLastInsertedId(insertedId);
         setLastCapturedUri(newGeoPhoto.uri);
         setNoteText("");
@@ -215,7 +214,7 @@ export default function CameraScreen() {
     }
 
     // we used to update the in-memory strip here.
-    // now Explore will read from SQLite, so we can just close.
+    // now Gallery will read from SQLite, so we can just close.
     setNoteModalVisible(false);
   }
 
@@ -375,13 +374,16 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "flex-end",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 6,
   },
   modalCard: {
     backgroundColor: "#fff",
     padding: 16,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    borderRadius: 18,
+    width: "100%",
+    maxWidth: 420,
     gap: 12,
   },
   modalTitle: {
