@@ -12,65 +12,34 @@ export type GeoPhotoRow = {
   note?: string | null;
 };
 
-export function insertGeoPhoto(entry: GeoPhotoRow): Promise<number> {
-  return new Promise((resolve, reject) => {
-    db.transaction((tx) => {
-      tx.executeSql(
-        `INSERT INTO geo_photos 
-          (uri, taken_at, latitude, longitude, city, region, country, note)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
-        [
-          entry.uri,
-          entry.taken_at,
-          entry.latitude ?? null,
-          entry.longitude ?? null,
-          entry.city ?? null,
-          entry.region ?? null,
-          entry.country ?? null,
-          entry.note ?? null,
-        ],
-        (_tx, result) => {
-          resolve(result.insertId as number);
-        },
-        (_tx, err) => {
-          reject(err);
-          return false;
-        }
-      );
-    });
-  });
+export async function insertGeoPhoto(entry: GeoPhotoRow): Promise<number> {
+  const result = await db.runAsync(
+    `INSERT INTO geo_photos 
+      (uri, taken_at, latitude, longitude, city, region, country, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+    [
+      entry.uri,
+      entry.taken_at,
+      entry.latitude ?? null,
+      entry.longitude ?? null,
+      entry.city ?? null,
+      entry.region ?? null,
+      entry.country ?? null,
+      entry.note ?? null,
+    ]
+  );
+
+  // new API returns { lastInsertRowId, changes }
+  return result.lastInsertRowId as number;
 }
 
-export function updateGeoPhotoNote(id: number, note: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    db.transaction((tx) => {
-      tx.executeSql(
-        `UPDATE geo_photos SET note = ? WHERE id = ?;`,
-        [note, id],
-        () => resolve(),
-        (_tx, err) => {
-          reject(err);
-          return false;
-        }
-      );
-    });
-  });
+export async function updateGeoPhotoNote(id: number, note: string): Promise<void> {
+  await db.runAsync(`UPDATE geo_photos SET note = ? WHERE id = ?;`, [note, id]);
 }
 
-export function listGeoPhotos(): Promise<GeoPhotoRow[]> {
-  return new Promise((resolve, reject) => {
-    db.transaction((tx) => {
-      tx.executeSql(
-        `SELECT * FROM geo_photos ORDER BY datetime(taken_at) DESC;`,
-        [],
-        (_tx, { rows }) => {
-          resolve(rows._array as GeoPhotoRow[]);
-        },
-        (_tx, err) => {
-          reject(err);
-          return false;
-        }
-      );
-    });
-  });
+export async function listGeoPhotos(): Promise<GeoPhotoRow[]> {
+  const rows = await db.getAllAsync<GeoPhotoRow>(
+    `SELECT * FROM geo_photos ORDER BY datetime(taken_at) DESC;`
+  );
+  return rows;
 }

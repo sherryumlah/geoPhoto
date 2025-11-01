@@ -5,14 +5,20 @@ import * as MediaLibrary from "expo-media-library";
 import React, { useRef, useState } from "react";
 import {
   Alert,
+  Modal,
   Platform,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { GeoPhotoStrip } from "../../components/GeoPhotoStrip";
 import { useLocation } from "../../hooks/useLocation";
+import {
+  insertGeoPhoto,
+  updateGeoPhotoNote,
+} from "../../lib/db/geoPhotoRepo";
 
 type GeoPhoto = {
   uri: string;
@@ -22,6 +28,7 @@ type GeoPhoto = {
   city?: string;
   region?: string;
   country?: string;
+  note?: string | null;
 };
 
 export default function CameraScreen() {
@@ -44,10 +51,17 @@ export default function CameraScreen() {
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [isTakingPhoto, setIsTakingPhoto] = useState(false);
 
+  // 🆕 note modal state
+  const [noteModalVisible, setNoteModalVisible] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [lastInsertedId, setLastInsertedId] = useState<number | null>(null);
+  const [lastCapturedUri, setLastCapturedUri] = useState<string | null>(null);
+
   const isRunningInExpoGo =
     Constants.appOwnership === "expo" ||
     Constants.executionEnvironment === "storeClient";
 
+  // no permission yet
   if (!permission) {
     return (
       <View style={styles.center}>
@@ -56,6 +70,7 @@ export default function CameraScreen() {
     );
   }
 
+  // user denied permission
   if (!permission.granted) {
     return (
       <View style={styles.center}>
@@ -87,25 +102,24 @@ export default function CameraScreen() {
   }
 
   async function takePhoto() {
-    // Don’t take photo if not ready yet
     if (!cameraRef.current || !isCameraReady) {
       console.log("Camera not ready yet");
       return;
     }
 
-    // 2. avoid double-tap spam
+    // Prevent double taps
     if (isTakingPhoto) return;
     setIsTakingPhoto(true);
 
     try {
-      // Capture photo and preserve any existing EXIF data
+      // 1. Capture
       const photo = await cameraRef.current.takePictureAsync({
         exif: true,
         quality: 1,
         skipProcessing: false,
       });
 
-      // Save to gallery (if not in Expo Go-on-Android)
+      // 2. Save to gallery (outside Expo Go on Android)
       if (!(Platform.OS === "android" && isRunningInExpoGo)) {
         const canSave = await ensureMediaPermission();
         if (!canSave) {
@@ -134,7 +148,7 @@ export default function CameraScreen() {
         );
       }
 
-      // 5. always store in local UI list
+      // 3. build in-app record
       const lat = location ? location.coords.latitude : null;
       const lon = location ? location.coords.longitude : null;
 
@@ -146,15 +160,69 @@ export default function CameraScreen() {
         city: address?.city,
         region: address?.region,
         country: address?.country,
+        note: null,
       };
 
+      // 4. persist to SQLite
+      let insertedId: number | null = null;
+      try {
+        insertedId = await insertGeoPhoto({
+          uri: newGeoPhoto.uri,
+          taken_at: newGeoPhoto.takenAt,
+          latitude: newGeoPhoto.latitude,
+          longitude: newGeoPhoto.longitude,
+          city: newGeoPhoto.city ?? null,
+          region: newGeoPhoto.region ?? null,
+          country: newGeoPhoto.country ?? null,
+          note: null,
+        });
+      } catch (dbErr) {
+        console.warn("Could not insert photo into SQLite", dbErr);
+      }
+
+      // 5. update UI immediately
       setPhotos((prev) => [newGeoPhoto, ...prev]);
+
+      // 6. if we have a row id, open note modal
+      if (insertedId) {
+        setLastInsertedId(insertedId);
+        setLastCapturedUri(newGeoPhoto.uri);
+        setNoteText("");
+        setNoteModalVisible(true);
+      }
     } catch (err: any) {
       console.warn("Failed to capture image:", err);
       Alert.alert("Camera", "Failed to capture image. Try again.");
     } finally {
       setIsTakingPhoto(false);
     }
+  }
+
+  async function handleSaveNote() {
+    // user hit Save in modal
+    if (!lastInsertedId) {
+      setNoteModalVisible(false);
+      return;
+    }
+
+    const trimmed = noteText.trim();
+
+    try {
+      await updateGeoPhotoNote(lastInsertedId, trimmed);
+    } catch (err) {
+      console.warn("Could not update note in SQLite", err);
+    }
+
+    // also update the in-memory list
+    if (lastCapturedUri) {
+      setPhotos((prev) =>
+        prev.map((p) =>
+          p.uri === lastCapturedUri ? { ...p, note: trimmed } : p
+        )
+      );
+    }
+
+    setNoteModalVisible(false);
   }
 
   function toggleCameraFacing() {
@@ -167,7 +235,6 @@ export default function CameraScreen() {
         ref={cameraRef}
         style={styles.camera}
         facing={facing}
-        // 👇 this is IMPORTANT
         onCameraReady={() => {
           setIsCameraReady(true);
         }}
@@ -187,7 +254,7 @@ export default function CameraScreen() {
           )}
         </View>
 
-        {/* map-pin refresh button */}
+        {/* refresh location */}
         <TouchableOpacity style={styles.refreshBtn} onPress={refetchLocation}>
           <Ionicons name="location" size={18} color="#fff" />
         </TouchableOpacity>
@@ -213,6 +280,41 @@ export default function CameraScreen() {
           disabled={locLoading || !isCameraReady || isTakingPhoto}
         />
       </View>
+
+      {/* NOTE MODAL */}
+      <Modal
+        visible={noteModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setNoteModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Add a journal note</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="What do you want to remember about this place?"
+              value={noteText}
+              onChangeText={setNoteText}
+              multiline
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: "#ddd" }]}
+                onPress={() => setNoteModalVisible(false)}
+              >
+                <Text>Skip</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: "#2563eb" }]}
+                onPress={handleSaveNote}
+              >
+                <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -286,5 +388,39 @@ const styles = StyleSheet.create({
     borderWidth: 6,
     borderColor: "#fff",
     backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  modalCard: {
+    backgroundColor: "#fff",
+    padding: 16,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    gap: 12,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  input: {
+    minHeight: 80,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 10,
+    padding: 10,
+    textAlignVertical: "top",
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+  },
+  modalBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
   },
 });
