@@ -66,9 +66,14 @@ export default function GalleryScreen() {
       loadPhotos();
     });
 
+    const offUpdated = on("geoPhoto:updated", () => {
+      loadPhotos();
+    });
+
     return () => {
       offCreated();
       offDeleted();
+      offUpdated();
     };
   }, [loadPhotos]);
 

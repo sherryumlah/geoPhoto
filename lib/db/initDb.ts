@@ -11,7 +11,14 @@ export async function initDb() {
       city TEXT,
       region TEXT,
       country TEXT,
-      note TEXT
+      note TEXT,
+      media_asset_id TEXT
     );
   `);
+
+  try {
+    await db.execAsync(`ALTER TABLE geo_photos ADD COLUMN media_asset_id TEXT;`);
+  } catch (e) {
+    // ignore "duplicate column" errors
+  }
 }
