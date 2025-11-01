@@ -23,8 +23,33 @@ export async function getRecentGeoPhotos(limit = 50): Promise<GeoPhotoRow[]> {
      LIMIT ?;`,
     [limit]
   );
-  return rows;
+
+  // Scrub rows whose file is gone from the media library
+  const cleaned: GeoPhotoRow[] = [];
+
+  for (const row of rows) {
+    if (row.uri?.startsWith("file://")) {
+      try {
+        const info = await FileSystem.getInfoAsync(row.uri);
+        if (!info.exists) {
+          // file was deleted outside the app (e.g. by Photos / cloud)
+          if (row.id) {
+            await db.runAsync("DELETE FROM geo_photos WHERE id = ?", [row.id]);
+            emit("geoPhoto:deleted", { id: row.id });
+          }
+          continue; 
+        }
+      } catch (err) {
+        console.warn("Could not stat file for geo photo", row.uri, err);
+      }
+    }
+
+    cleaned.push(row);
+  }
+
+  return cleaned;
 }
+
 
 export async function insertGeoPhoto(entry: GeoPhotoRow): Promise<number> {
   const result = await db.runAsync(
@@ -68,20 +93,20 @@ export async function deleteGeoPhotoAndFile(row: GeoPhotoRow) {
     return;
   }
 
-  // 1) delete from DB
+  // Delete from DB
   await db.runAsync("DELETE FROM geo_photos WHERE id = ?", [row.id]);
 
-  // 2) delete from media + fs
+  // Delete from media library + fs
   await deletePhysicalFile(row);
 
-  // 3) tell UI
+  // Emit event for refreshing gallery
   emit("geoPhoto:deleted", { id: row.id });
 }
 
 async function deletePhysicalFile(row: GeoPhotoRow) {
   const { uri, media_asset_id, country, region, taken_at } = row;
 
-  // ask for media permission (simple call - your SDK didn't like args)
+  // Ask for media permission
   const mediaPerm = await MediaLibrary.requestPermissionsAsync();
   const canUseMedia = mediaPerm.granted;
 
@@ -93,7 +118,7 @@ async function deletePhysicalFile(row: GeoPhotoRow) {
     assetIdsToDelete.push(media_asset_id);
   }
 
-  // 2. try to find the asset in the album we originally created
+  // Find the asset in the album we originally created
   if (canUseMedia) {
     const albumName = buildAlbumNameFromRow(country, region, taken_at);
     if (albumName) {
