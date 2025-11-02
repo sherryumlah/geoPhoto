@@ -1,9 +1,8 @@
 module.exports = {
-  preset: 'jest-expo',
-  testEnvironment: 'node',
-  setupFilesAfterEnv: ['@testing-library/jest-native/extend-expect'],
+  preset: "jest-expo",
+  setupFilesAfterEnv: ["@testing-library/jest-native/extend-expect"],
   transformIgnorePatterns: [
-    'node_modules/(?!(react-native|@react-native|expo|@expo|expo-modules-core|@expo/vector-icons)/)',
+    "node_modules/(?!((jest-)?expo(-.*)?|@expo(-.*)?|react-native|@react-native(-community)?/.*|@react-navigation/.*|expo-font|expo-constants|expo-camera|expo-modules-core)/)",
   ],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',

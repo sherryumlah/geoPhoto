@@ -252,6 +252,7 @@ export default function CameraScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
+          testID="shutter" 
           style={[
             styles.shutter,
             locLoading || !isCameraReady || isTakingPhoto ? { opacity: 0.4 } : null,
