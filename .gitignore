@@ -3,11 +3,20 @@
 # dependencies
 node_modules/
 
-# Expo
+# Expo / Metro bundler, React Native cache
 .expo/
+.expo-shared/
+*.expo/
 dist/
+build/
 web-build/
 expo-env.d.ts
+*.bundle
+*.packager
+*.jsbundle
+
+# Expo CLI artifact
+.expo-dev-client/
 
 # Native
 .kotlin/
@@ -31,7 +40,9 @@ yarn-error.*
 *.pem
 
 # local env files
-.env*.local
+.env
+.env.*
+*.local
 
 # typescript
 *.tsbuildinfo
@@ -45,3 +56,18 @@ app-example
 # jest coverage output
 coverage/
 *.snap
+
+# Temporary Jest cache
+jest-cache/
+jest-resolve-cache/
+
+# Babel cache
+babel.config.js.map
+
+# Logs
+*.log
+
+# VSCode workspace settings (only if they’re personal)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
