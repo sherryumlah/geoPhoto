@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -7,6 +8,9 @@ import {
 import React from "react";
 import CameraScreen from "../../app/(tabs)/camera";
 import { useLocation } from "../../hooks/useLocation";
+
+// we'll capture the latest onCameraReady from the mock so tests can invoke it
+let latestOnCameraReady: (() => void) | null = null;
 
 // ─────────────────────────────────────────────
 // SHARED MOCKS
@@ -26,14 +30,8 @@ jest.mock("expo-camera", () => {
       if (props?.ref) {
         props.ref.current = mockCameraRef;
       }
-      // IMPORTANT:
-      // don't call props.onCameraReady() DURING render
-      // call it in a microtask so React doesn't complain
-      if (props?.onCameraReady) {
-        setTimeout(() => {
-          props.onCameraReady();
-        }, 0);
-      }
+      // store onCameraReady for the test to call later
+      latestOnCameraReady = props?.onCameraReady ?? null;
       return <React.Fragment>{props.children}</React.Fragment>;
     }),
   };
@@ -102,6 +100,7 @@ const mockUseLocation = useLocation as jest.Mock;
 describe("CameraScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    latestOnCameraReady = null;
 
     mockTakePicture.mockReset();
     mockRequestPermissionsAsync.mockResolvedValue({ granted: true });
@@ -178,7 +177,13 @@ describe("CameraScreen", () => {
 
     render(<CameraScreen />);
 
-    // wait for onCameraReady to run
+    // now manually fire the camera-ready callback
+    if (latestOnCameraReady) {
+      await act(async () => {
+        latestOnCameraReady && latestOnCameraReady();
+      });
+    }
+
     await waitFor(() => {
       expect(screen.getByText(/chicago/i)).toBeTruthy();
     });
@@ -198,6 +203,12 @@ describe("CameraScreen", () => {
     });
 
     render(<CameraScreen />);
+
+    if (latestOnCameraReady) {
+      await act(async () => {
+        latestOnCameraReady && latestOnCameraReady();
+      });
+    }
 
     await waitFor(() => {
       expect(
@@ -222,10 +233,11 @@ describe("CameraScreen", () => {
 
     const { getByText } = render(<CameraScreen />);
 
-    // make sure the camera rendered / onCameraReady fired
-    await waitFor(() => {
-      expect(getByText(/flip/i)).toBeTruthy();
-    });
+    if (latestOnCameraReady) {
+      await act(async () => {
+        latestOnCameraReady && latestOnCameraReady();
+      });
+    }
 
     const flip = getByText(/flip/i);
     fireEvent.press(flip);
@@ -248,9 +260,11 @@ describe("CameraScreen", () => {
 
     render(<CameraScreen />);
 
-    await waitFor(() => {
-      expect(screen.getByText(/flip/i)).toBeTruthy();
-    });
+    if (latestOnCameraReady) {
+      await act(async () => {
+        latestOnCameraReady && latestOnCameraReady();
+      });
+    }
 
     expect(mockTakePicture).not.toHaveBeenCalled();
   });
@@ -278,10 +292,11 @@ describe("CameraScreen", () => {
 
     const { getByTestId, queryByText } = render(<CameraScreen />);
 
-    // wait for camera to be ready before pressing
-    await waitFor(() => {
-      expect(screen.getByText(/flip/i)).toBeTruthy();
-    });
+    if (latestOnCameraReady) {
+      await act(async () => {
+        latestOnCameraReady && latestOnCameraReady();
+      });
+    }
 
     const shutter = await waitFor(() => getByTestId("shutter"));
     fireEvent.press(shutter);
